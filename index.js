@@ -25,7 +25,7 @@ io.on('connection', (socket) => {
         resetBoard(room);
     });
 
-    socket.on('joinRoom', (roomId, playerName) => {
+    socket.on('joinRoom', (roomId, playerName, playerId) => {
         if (!rooms[roomId]) {
             rooms[roomId] = {
                 players: [],
@@ -41,6 +41,7 @@ io.on('connection', (socket) => {
         rooms[roomId].players.push({
             id: socket.id,
             name: playerName,
+            playerId: playerId,
         });
 
         socket.join(roomId);
@@ -68,20 +69,33 @@ io.on('connection', (socket) => {
                 updatePoints(room, winner);
 
                 // Inform clients about the winner and reset the board
-                io.to(roomId).emit('gameOver', { winner, points: room.points });
+                io.to(roomId).emit('gameOver', {
+                    winner,
+                    points: room.points,
+                    players: room.players.map(player => ({ name: player.name, playerId: player.playerId })),
+                });
+
                 resetBoard(room);
                 // No need to reset the board here; it will be done on the frontend
             } else if (room.board.every((cell) => cell !== null)) {
                 // Draw
                 room.points[room.players[0].name]++;
                 room.points[room.players[1].name]++;
-                io.to(roomId).emit('gameOver', { draw: true, points: room.points });
+                io.to(roomId).emit('gameOver', {
+                    draw: true,
+                    points: room.points,
+                    players: room.players.map(player => ({ name: player.name, playerId: player.playerId })),
+                });
                 // No need to reset the board here; it will be done on the frontend
                 resetBoard(room);
             } else {
                 // Switch turns
                 room.currentPlayer = room.currentPlayer === room.players[0].id ? room.players[1].id : room.players[0].id;
-                io.to(roomId).emit('updateBoard', { board: room.board, currentPlayer: room.currentPlayer, currentPlayerName: getCurrentPlayerName(room) });
+                io.to(roomId).emit('updateBoard', {
+                    board: room.board,
+                    currentPlayer: room.currentPlayer,
+                    currentPlayerName: getCurrentPlayerName(room),
+                });
                 socket.to(roomId).emit('waitingForTurn');
             }
         }
@@ -121,16 +135,34 @@ function startGame(roomId) {
     };
     // Randomly select the starting player
     room.currentPlayer = Math.random() < 0.5 ? room.players[0].id : room.players[1].id;
-    io.to(roomId).emit('startGame', { board: room.board, currentPlayer: room.currentPlayer, currentPlayerName: getCurrentPlayerName(room) });
+    io.to(roomId).emit('startGame', {
+        board: room.board,
+        currentPlayer: room.currentPlayer,
+        currentPlayerName: getCurrentPlayerName(room),
+    });
 }
 
 function resetBoard(room) {
+    // Reset points array when restarting
+    room.points = {
+        [room.players[0].name]: 0,
+        [room.players[1].name]: 0,
+    };
+
     room.board = Array(9).fill(null);
     room.currentPlayer = room.currentPlayer === room.players[0].id ? room.players[1].id : room.players[0].id;
-    io.to(room.players[0].id).emit('updateBoard', { board: room.board, currentPlayer: room.currentPlayer, currentPlayerName: getCurrentPlayerName(room)});
-    io.to(room.players[1].id).emit('updateBoard', { board: room.board, currentPlayer: room.currentPlayer, currentPlayerName: getCurrentPlayerName(room) });
-}
 
+    io.to(room.players[0].id).emit('updateBoard', {
+        board: room.board,
+        currentPlayer: room.currentPlayer,
+        currentPlayerName: getCurrentPlayerName(room),
+    });
+    io.to(room.players[1].id).emit('updateBoard', {
+        board: room.board,
+        currentPlayer: room.currentPlayer,
+        currentPlayerName: getCurrentPlayerName(room),
+    });
+}
 
 function calculateWinner(board) {
     const winningLines = [
