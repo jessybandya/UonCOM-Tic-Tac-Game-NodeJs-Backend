@@ -1,27 +1,177 @@
-const express = require("express");
+const express = require('express');
+const http = require('http');
+const socketIO = require('socket.io');
+const cors = require('cors');
+
 const app = express();
-const http = require("http");
 const server = http.createServer(app);
-const io = require("socket.io")(server, { cors: { origin: "*" } });
+const io = socketIO(server, {
+    cors: {
+        origin: "*", // replace with your React app's URL
+        methods: ["GET", "POST"],
+        pingInterval: 100, // 10 seconds
+        pingTimeout: 100, // 5 seconds
+    }
+});
+app.use(cors());
 
-io.on("connection", (socket) => {
-  console.log("User Connected");
+const rooms = {};
 
-  socket.on("joinRoom", (roomCode) => {
-    console.log(`A user joined the room ${roomCode}`);
-    socket.join(roomCode);
-  });
+io.on('connection', (socket) => {
+    console.log('A user connected');
 
-  socket.on("play", ({ id, roomCode }) => {
-    console.log(`play at ${id} to ${roomCode}`);
-    socket.broadcast.to(roomCode).emit("updateGame", id);
-  });
+    socket.on('resetBoard', (roomId) => {
+        const room = rooms[roomId];
+        resetBoard(room);
+    });
 
-  socket.on("disconnect", () => {
-    console.log("User Disconnected");
-  });
+    socket.on('joinRoom', (roomId, playerName) => {
+        if (!rooms[roomId]) {
+            rooms[roomId] = {
+                players: [],
+                currentPlayer: null,
+                board: Array(9).fill(null),
+                points: {
+                    [playerName]: 0,
+                    opponent: 0,
+                },
+            };
+        }
+
+        rooms[roomId].players.push({
+            id: socket.id,
+            name: playerName,
+        });
+
+        socket.join(roomId);
+        io.to(roomId).emit('playerJoined', playerName);
+
+        console.log(`${playerName} joined room ${roomId}`);
+
+        if (rooms[roomId].players.length === 2) {
+            // Start the game when there are two players
+            startGame(roomId);
+        }
+    });
+
+    socket.on('makeMove', (roomId, index) => {
+        const room = rooms[roomId];
+
+        // Check if it's the player's turn and the move is valid
+        if (socket.id === room.currentPlayer && room.board[index] === null && !calculateWinner(room.board)) {
+            room.board[index] = room.currentPlayer === room.players[0].id ? 'X' : 'O';
+
+            // Check for a winner or draw
+            const winner = calculateWinner(room.board);
+            if (winner) {
+                // Update points
+                updatePoints(room, winner);
+
+                // Inform clients about the winner and reset the board
+                io.to(roomId).emit('gameOver', { winner, points: room.points });
+                resetBoard(room);
+                // No need to reset the board here; it will be done on the frontend
+            } else if (room.board.every((cell) => cell !== null)) {
+                // Draw
+                room.points[room.players[0].name]++;
+                room.points[room.players[1].name]++;
+                io.to(roomId).emit('gameOver', { draw: true, points: room.points });
+                // No need to reset the board here; it will be done on the frontend
+                resetBoard(room);
+            } else {
+                // Switch turns
+                room.currentPlayer = room.currentPlayer === room.players[0].id ? room.players[1].id : room.players[0].id;
+                io.to(roomId).emit('updateBoard', { board: room.board, currentPlayer: room.currentPlayer, currentPlayerName: getCurrentPlayerName(room) });
+                socket.to(roomId).emit('waitingForTurn');
+            }
+        }
+    });
+
+    // Listen for the "newGame" event triggered by the frontend
+    socket.on('newGame', (roomId) => {
+        resetGame(roomId);
+    });
+
+    socket.on('disconnect', () => {
+        const roomId = Object.keys(rooms).find((key) => rooms[key].players.some((player) => player.id === socket.id));
+
+        if (roomId) {
+            const player = rooms[roomId].players.find((player) => player.id === socket.id);
+
+            // Remove the player from the room
+            rooms[roomId].players = rooms[roomId].players.filter((player) => player.id !== socket.id);
+
+            // Notify remaining players about the disconnected player
+            io.to(roomId).emit('playerLeft', player.name);
+
+            // If there is only one player remaining, reset the game
+            if (rooms[roomId].players.length === 1) {
+                resetGame(roomId);
+            }
+        }
+    });
 });
 
-server.listen(5000, () =>
-  console.log("server running => http://localhost:5000")
-);
+function startGame(roomId) {
+    const room = rooms[roomId];
+    // Reset points when starting a new game
+    room.points = {
+        [room.players[0].name]: 0,
+        [room.players[1].name]: 0,
+    };
+    // Randomly select the starting player
+    room.currentPlayer = Math.random() < 0.5 ? room.players[0].id : room.players[1].id;
+    io.to(roomId).emit('startGame', { board: room.board, currentPlayer: room.currentPlayer, currentPlayerName: getCurrentPlayerName(room) });
+}
+
+function resetBoard(room) {
+    room.board = Array(9).fill(null);
+    room.currentPlayer = room.currentPlayer === room.players[0].id ? room.players[1].id : room.players[0].id;
+    io.to(room.players[0].id).emit('updateBoard', { board: room.board, currentPlayer: room.currentPlayer, currentPlayerName: getCurrentPlayerName(room)});
+    io.to(room.players[1].id).emit('updateBoard', { board: room.board, currentPlayer: room.currentPlayer, currentPlayerName: getCurrentPlayerName(room) });
+}
+
+
+function calculateWinner(board) {
+    const winningLines = [
+        [0, 1, 2],
+        [3, 4, 5],
+        [6, 7, 8],
+        [0, 3, 6],
+        [1, 4, 7],
+        [2, 5, 8],
+        [0, 4, 8],
+        [2, 4, 6],
+    ];
+
+    for (let i = 0; i < winningLines.length; i++) {
+        const [a, b, c] = winningLines[i];
+        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+            return board[a];
+        }
+    }
+
+    return null;
+}
+
+function updatePoints(room, winner) {
+    if (winner === 'X') {
+        room.points[room.players[0].name] += 3;
+    } else {
+        room.points[room.players[1].name] += 3;
+    }
+
+    // Emit points in the correct format
+    io.to(room.players[0].id).emit('updatePoints', { points: room.points });
+    io.to(room.players[1].id).emit('updatePoints', { points: room.points });
+}
+
+function getCurrentPlayerName(room) {
+    return room.currentPlayer === room.players[0].id ? room.players[0].name : room.players[1].name;
+}
+
+const PORT = process.env.PORT || 5000;
+
+server.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
