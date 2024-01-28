@@ -16,6 +16,8 @@ const io = socketIO(server, {
 app.use(cors());
 
 const rooms = {};
+const connectedUsers = {}; // Store connected users
+
 
 io.on('connection', (socket) => {
     console.log('A user connected');
@@ -24,6 +26,16 @@ io.on('connection', (socket) => {
         const room = rooms[roomId];
         resetBoard(room);
     });
+
+            // Receive user ID from React.js
+            socket.on('setUserId', (userId) => {
+              // Store the user ID in the connectedUsers object with isOnline set to true
+              connectedUsers[socket.id] = { userId, isOnline: true };
+      
+              // Send the list of connected users to React.js
+              io.emit('connectedUsers', Object.values(connectedUsers));
+          });
+    
 
     socket.on('joinRoom', (roomId, playerName, playerId) => {
         if (!rooms[roomId]) {
@@ -42,7 +54,18 @@ io.on('connection', (socket) => {
             id: socket.id,
             name: playerName,
             playerId: playerId,
+            online: true, // Set online status to true initially
+            typing: false, // Set typing status to false initially
         });
+
+        socket.on('typing', (roomId, isTyping, playerName) => {
+          const room = rooms[roomId];
+          const player = room.players.find((p) => p.id === socket.id);
+          player.typing = isTyping;
+  
+          // Broadcast typing status to the other player in the room
+          socket.to(roomId).emit('opponentTyping', isTyping, playerName);
+      });
 
         socket.join(roomId);
         io.to(roomId).emit('playerJoined', playerName);
@@ -107,6 +130,16 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
+      console.log(`User disconnected: ${socket.id}`);
+
+      // Set the isOnline property to false for the disconnected user
+      if (connectedUsers[socket.id]) {
+          connectedUsers[socket.id].isOnline = false;
+      }
+
+      // Send the updated list of connected users to React.js
+      io.emit('connectedUsers', Object.values(connectedUsers));
+
         const roomId = Object.keys(rooms).find((key) => rooms[key].players.some((player) => player.id === socket.id));
 
         if (roomId) {
@@ -117,6 +150,13 @@ io.on('connection', (socket) => {
 
             // Notify remaining players about the disconnected player
             io.to(roomId).emit('playerLeft', player.name);
+
+                                  // Player found, clear typing status
+                                  player.typing = false;
+
+                                  // Broadcast the updated typing status to the other player in the room
+                                  socket.to(roomId).emit('opponentTyping', false, player.name);
+                      
 
             // If there is only one player remaining, reset the game
             if (rooms[roomId].players.length === 1) {
