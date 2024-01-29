@@ -16,6 +16,7 @@ const io = socketIO(server, {
 app.use(cors());
 
 const rooms = {};
+const connectedUsers = {}; // Store connected users
 
 
 io.on("connection", (socket) => {
@@ -26,6 +27,14 @@ io.on("connection", (socket) => {
     resetBoard(room);
   });
 
+  // Receive user ID from React.js
+  socket.on("setUserId", (userId) => {
+    // Store the user ID in the connectedUsers object with isOnline set to true
+    connectedUsers[socket.id] = { userId, isOnline: true };
+
+    // Send the list of connected users to React.js
+    io.emit("connectedUsers", Object.values(connectedUsers));
+  });
 
   socket.on("joinRoom", (roomId, playerName, playerId) => {
     if (!rooms[roomId]) {
@@ -256,3 +265,4 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
