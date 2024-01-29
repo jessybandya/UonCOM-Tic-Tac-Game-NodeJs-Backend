@@ -36,7 +36,7 @@ io.on("connection", (socket) => {
     io.emit("connectedUsers", Object.values(connectedUsers));
   });
 
-  socket.on("joinRoom", (roomId, playerName, playerId) => {
+  socket.on("joinRoom", (roomId, playerName, playerId, isOnline) => {
     if (!rooms[roomId]) {
       rooms[roomId] = {
         players: [],
@@ -53,7 +53,7 @@ io.on("connection", (socket) => {
       id: socket.id,
       name: playerName,
       playerId: playerId,
-      online: true, // Set online status to true initially
+      online: isOnline, // Set online status to true initially
       typing: false, // Set typing status to false initially
   });
 
