@@ -221,36 +221,46 @@ function resetBoard(room) {
 }
 
 function calculateWinner(board) {
-  const size = 5; // Size of the grid
-  // Horizontal and vertical checks
+  const size = 5; // Adjusted for a 5x5 grid
+  // Horizontal and Vertical checks
   for (let row = 0; row < size; row++) {
     for (let col = 0; col < size; col++) {
-      // Check horizontal line
-      if (col <= size - 3 && board[row * size + col] && board[row * size + col] === board[row * size + col + 1] && board[row * size + col] === board[row * size + col + 2]) {
+      // Check horizontal line for four in a row
+      if (col <= size - 4 && board[row * size + col] && board[row * size + col] === board[row * size + col + 1] && board[row * size + col] === board[row * size + col + 2] && board[row * size + col] === board[row * size + col + 3]) {
         return board[row * size + col];
       }
-      // Check vertical line
-      if (row <= size - 3 && board[row * size + col] && board[row * size + col] === board[(row + 1) * size + col] && board[row * size + col] === board[(row + 2) * size + col]) {
+      // Check vertical line for four in a row
+      if (row <= size - 4 && board[row * size + col] && board[row * size + col] === board[(row + 1) * size + col] && board[row * size + col] === board[(row + 2) * size + col] && board[row * size + col] === board[(row + 3) * size + col]) {
         return board[row * size + col];
       }
     }
   }
-  // Diagonal checks
-  for (let row = 0; row <= size - 3; row++) {
-    for (let col = 0; col <= size - 3; col++) {
+  // Diagonal checks for four in a row
+  for (let row = 0; row <= size - 4; row++) {
+    for (let col = 0; col <= size - 4; col++) {
       // Check down-right ( \ ) diagonal
-      if (board[row * size + col] && board[row * size + col] === board[(row + 1) * size + col + 1] && board[row * size + col] === board[(row + 2) * size + col + 2]) {
+      if (board[row * size + col] && board[row * size + col] === board[(row + 1) * size + col + 1] && board[row * size + col] === board[(row + 2) * size + col + 2] && board[row * size + col] === board[(row + 3) * size + col + 3]) {
         return board[row * size + col];
       }
-      // Check down-left ( / ) diagonal (start from the rightmost column)
-      if (board[row * size + (col + 2)] && board[row * size + (col + 2)] === board[(row + 1) * size + (col + 1)] && board[row * size + (col + 2)] === board[(row + 2) * size + col]) {
-        return board[row * size + (col + 2)];
+      // Check down-left ( / ) diagonal (starting from the right)
+      if (board[(row + 3) * size + col] && board[(row + 3) * size + col] === board[(row + 2) * size + col + 1] && board[(row + 3) * size + col] === board[(row + 1) * size + col + 2] && board[(row + 3) * size + col] === board[row * size + col + 3]) {
+        return board[(row + 3) * size + col];
+      }
+    }
+  }
+  // Additionally, check the anti-diagonal from left to right for four in a row
+  for (let row = 0; row <= size - 4; row++) {
+    for (let col = 3; col < size; col++) {
+      // Check up-right ( / ) diagonal
+      if (board[row * size + col] && board[row * size + col] === board[(row + 1) * size + col - 1] && board[row * size + col] === board[(row + 2) * size + col - 2] && board[row * size + col] === board[(row + 3) * size + col - 3]) {
+        return board[row * size + col];
       }
     }
   }
   // No winner found
   return null;
 }
+
 
 
 function updatePoints(room, winner) {
