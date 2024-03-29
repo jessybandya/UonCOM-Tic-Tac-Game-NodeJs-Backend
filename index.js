@@ -41,7 +41,7 @@ io.on("connection", (socket) => {
       rooms[roomId] = {
         players: [],
         currentPlayer: null,
-        board: Array(9).fill(null),
+        board: Array(25).fill(null),
         points: {
           [playerName]: 0,
           opponent: 0,
@@ -202,7 +202,7 @@ function resetBoard(room) {
     [room.players[1].name]: 0,
   };
 
-  room.board = Array(9).fill(null);
+  room.board = Array(25).fill(null);
   room.currentPlayer =
     room.currentPlayer === room.players[0].id
       ? room.players[1].id
@@ -221,26 +221,37 @@ function resetBoard(room) {
 }
 
 function calculateWinner(board) {
-  const winningLines = [
-    [0, 1, 2],
-    [3, 4, 5],
-    [6, 7, 8],
-    [0, 3, 6],
-    [1, 4, 7],
-    [2, 5, 8],
-    [0, 4, 8],
-    [2, 4, 6],
-  ];
-
-  for (let i = 0; i < winningLines.length; i++) {
-    const [a, b, c] = winningLines[i];
-    if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-      return board[a];
+  const size = 5; // Size of the grid
+  // Horizontal and vertical checks
+  for (let row = 0; row < size; row++) {
+    for (let col = 0; col < size; col++) {
+      // Check horizontal line
+      if (col <= size - 3 && board[row * size + col] && board[row * size + col] === board[row * size + col + 1] && board[row * size + col] === board[row * size + col + 2]) {
+        return board[row * size + col];
+      }
+      // Check vertical line
+      if (row <= size - 3 && board[row * size + col] && board[row * size + col] === board[(row + 1) * size + col] && board[row * size + col] === board[(row + 2) * size + col]) {
+        return board[row * size + col];
+      }
     }
   }
-
+  // Diagonal checks
+  for (let row = 0; row <= size - 3; row++) {
+    for (let col = 0; col <= size - 3; col++) {
+      // Check down-right ( \ ) diagonal
+      if (board[row * size + col] && board[row * size + col] === board[(row + 1) * size + col + 1] && board[row * size + col] === board[(row + 2) * size + col + 2]) {
+        return board[row * size + col];
+      }
+      // Check down-left ( / ) diagonal (start from the rightmost column)
+      if (board[row * size + (col + 2)] && board[row * size + (col + 2)] === board[(row + 1) * size + (col + 1)] && board[row * size + (col + 2)] === board[(row + 2) * size + col]) {
+        return board[row * size + (col + 2)];
+      }
+    }
+  }
+  // No winner found
   return null;
 }
+
 
 function updatePoints(room, winner) {
   if (winner === "X") {
